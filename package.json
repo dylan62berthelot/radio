@@ -1,5 +1,5 @@
 {
-  "name": "radio-ptt-server",
+  "name": "radio",
   "version": "1.0.0",
   "description": "Serveur de signalisation Radio PTT",
   "main": "server.js",
