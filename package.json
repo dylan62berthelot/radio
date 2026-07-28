@@ -1,9 +1,8 @@
 {
-  "name": "radio",
-  "version": "1.0.0",
-  "description": "Serveur de signalisation Radio PTT",
+  "name": "radio-ptt-server",
+  "version": "2.0.0",
+  "description": "Application Radio Push-To-Talk professionnelle",
   "main": "server.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },
@@ -11,8 +10,8 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "socket.io": "^4.7.5",
-    "cors": "^2.8.5"
+    "express": "4.19.2",
+    "socket.io": "4.7.5",
+    "cors": "2.8.5"
   }
 }
