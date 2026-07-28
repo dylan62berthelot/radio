@@ -191,6 +191,41 @@ body{background:#0a0d0a;color:#33ff66;font-family:'Courier New',monospace;displa
   #bottom-buttons{grid-template-columns:1fr 1fr;gap:4px}
   #soundboard{grid-template-columns:repeat(3,1fr)}
 }
+/* SOUNDBOARD CUSTOM */
+#soundboard-custom{width:100%;display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.sb-custom{position:relative}
+.sb-custom .sb-btn{width:100%;background:#0d1a1a;border-color:#1a4d4d;color:#33ddff}
+.sb-custom .sb-btn:active{background:#1a3d3d}
+.sb-delete{position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#660000;color:#ff4444;border:1px solid #aa0000;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;font-family:monospace;line-height:1}
+.sb-delete:hover{background:#aa0000;color:#fff}
+#sb-add-btn{width:100%;font-family:'Courier New',monospace;font-size:11px;font-weight:bold;padding:8px;background:#0a1a1a;color:#33ddff;border:1px dashed #1a4d4d;border-radius:8px;cursor:pointer;letter-spacing:1px;transition:all 0.1s}
+#sb-add-btn:hover{background:#1a2d2d;border-color:#33ddff}
+#sb-add-btn:active{transform:scale(0.98)}
+
+/* POPUP UPLOAD */
+#sound-upload-popup{display:none;position:fixed;inset:0;z-index:400;background:#000000dd;align-items:center;justify-content:center;padding:20px}
+#sound-upload-popup.open{display:flex}
+#sound-upload-box{background:#0a1a0f;border:2px solid #33ddff;border-radius:12px;padding:20px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px;text-align:center}
+#sound-upload-box h3{color:#33ddff;letter-spacing:2px;font-size:14px}
+#sound-upload-info{font-size:10px;color:#1a5c5c}
+#sound-name-input{font-family:'Courier New',monospace;font-size:14px;text-align:center;background:#040d06;color:#33ddff;border:2px solid #1a4d4d;border-radius:8px;padding:10px;letter-spacing:2px}
+#sound-name-input::placeholder{color:#1a4d4d}
+#sound-file-label{font-family:'Courier New',monospace;font-size:13px;padding:12px;background:#0d2e2e;color:#33ddff;border:2px solid #1a4d4d;border-radius:8px;cursor:pointer;font-weight:bold;transition:all 0.1s}
+#sound-file-label:hover{background:#1a3d3d;border-color:#33ddff}
+#sound-file-name{font-size:11px;color:#888;min-height:16px}
+#sound-preview-row{display:flex;gap:8px}
+#sound-preview-row button{flex:1;font-family:'Courier New',monospace;font-size:12px;padding:10px;border-radius:8px;cursor:pointer;font-weight:bold}
+#sound-preview-btn{background:#0d2e14;color:#33ff66;border:2px solid #33ff66}
+#sound-preview-btn:disabled{opacity:0.3;cursor:not-allowed}
+#sound-save-btn{background:#0d2e2e;color:#33ddff;border:2px solid #33ddff}
+#sound-save-btn:disabled{opacity:0.3;cursor:not-allowed}
+#sound-cancel-btn{font-family:'Courier New',monospace;font-size:12px;padding:8px;background:#1a0505;color:#ff3333;border:2px solid #661111;border-radius:8px;cursor:pointer;font-weight:bold}
+#sound-upload-error{font-size:11px;color:#ff4444;min-height:16px}
+
+@media(max-width:500px){
+  #soundboard-custom{grid-template-columns:repeat(3,1fr)}
+}
+  
 </style>
 </head>
 <body>
@@ -286,6 +321,30 @@ body{background:#0a0d0a;color:#33ff66;font-family:'Courier New',monospace;displa
     <button class="sb-btn" onclick="playSoundboard('attention')">⚠️ Attention</button>
     <button class="sb-btn" onclick="playSoundboard('bip')">🔔 Bip</button>
   </div>
+
+  <!-- SOUNDBOARD CUSTOM -->
+  <div id="soundboard-custom"></div>
+  <button id="sb-add-btn" onclick="openSoundUpload()">➕ AJOUTER UN SON</button>
+
+  <!-- POPUP UPLOAD SON -->
+  <div id="sound-upload-popup">
+    <div id="sound-upload-box">
+      <h3>🎵 AJOUTER UN SON</h3>
+      <div id="sound-upload-info">MP3, WAV ou OGG — 500 KB max</div>
+    <input type="text" id="sound-name-input" placeholder="NOM DU SON" maxlength="20" autocomplete="off" spellcheck="false">
+    <label id="sound-file-label">
+      📂 CHOISIR UN FICHIER
+      <input type="file" id="sound-file-input" accept="audio/mp3,audio/wav,audio/ogg,audio/webm,audio/mpeg,.mp3,.wav,.ogg,.webm" style="display:none">
+    </label>
+    <div id="sound-file-name">Aucun fichier</div>
+    <div id="sound-preview-row">
+      <button id="sound-preview-btn" onclick="previewUploadSound()" disabled>▶ ÉCOUTER</button>
+      <button id="sound-save-btn" onclick="saveCustomSound()" disabled>💾 SAUVEGARDER</button>
+    </div>
+    <button id="sound-cancel-btn" onclick="closeSoundUpload()">✕ ANNULER</button>
+    <div id="sound-upload-error"></div>
+  </div>
+</div>
 
   <!-- BOUTONS BAS -->
   <div id="bottom-buttons">
@@ -1146,6 +1205,14 @@ async function startApp(){
     setTimeout(function(){$('lcd-who-talks').textContent=''},3000);
   });
 
+  // SOUNDBOARD CUSTOM reçu
+  socket.on('soundboard:custom', function(d) {
+    addLog('🎵 ' + d.callsign + ' joue: ' + d.name);
+    playReceivedCustomSound(d.name, d.audio, d.type);
+    $('lcd-who-talks').textContent = '🎵 ' + d.callsign + ': ' + d.name;
+    setTimeout(function() { $('lcd-who-talks').textContent = ''; }, 3000);
+  });
+  
   // REPLAY
   socket.on('replay:available',function(d){
     $('replay-info').textContent='📼 Replay de '+d.callsign+' disponible';
@@ -1178,7 +1245,307 @@ async function startApp(){
 /* ============================================================
    INIT
    ============================================================ */
-loadSettings();updateChannelDisplay();
+  /* ============================================================
+     SOUNDBOARD CUSTOM — IndexedDB + Upload + Envoi
+     ============================================================ */
+var customSoundsDB = null;
+var customSoundsCache = {};
+var pendingUploadBuffer = null;
+var pendingUploadType = null;
+var MAX_SOUND_SIZE = 500 * 1024; // 500 KB
+var MAX_CUSTOM_SOUNDS = 20;
+
+// --- IndexedDB ---
+function openSoundsDB(callback) {
+  if (customSoundsDB) { callback(customSoundsDB); return; }
+  var request = indexedDB.open('RadioPTT_Sounds', 1);
+  request.onupgradeneeded = function(e) {
+    var db = e.target.result;
+    if (!db.objectStoreNames.contains('sounds')) {
+      db.createObjectStore('sounds', { keyPath: 'name' });
+    }
+  };
+  request.onsuccess = function(e) {
+    customSoundsDB = e.target.result;
+    callback(customSoundsDB);
+  };
+  request.onerror = function() {
+    console.error('IndexedDB erreur');
+    callback(null);
+  };
+}
+
+function saveSoundToDB(name, arrayBuffer, mimeType, callback) {
+  openSoundsDB(function(db) {
+    if (!db) { callback(false); return; }
+    var tx = db.transaction('sounds', 'readwrite');
+    var store = tx.objectStore('sounds');
+    store.put({ name: name, data: arrayBuffer, type: mimeType, added: Date.now() });
+    tx.oncomplete = function() {
+      customSoundsCache[name] = { data: arrayBuffer, type: mimeType };
+      callback(true);
+    };
+    tx.onerror = function() { callback(false); };
+  });
+}
+
+function deleteSoundFromDB(name, callback) {
+  openSoundsDB(function(db) {
+    if (!db) { callback(false); return; }
+    var tx = db.transaction('sounds', 'readwrite');
+    tx.objectStore('sounds').delete(name);
+    tx.oncomplete = function() {
+      delete customSoundsCache[name];
+      callback(true);
+    };
+    tx.onerror = function() { callback(false); };
+  });
+}
+
+function loadAllSounds(callback) {
+  openSoundsDB(function(db) {
+    if (!db) { callback([]); return; }
+    var tx = db.transaction('sounds', 'readonly');
+    var store = tx.objectStore('sounds');
+    var request = store.getAll();
+    request.onsuccess = function() {
+      var sounds = request.result || [];
+      customSoundsCache = {};
+      for (var i = 0; i < sounds.length; i++) {
+        customSoundsCache[sounds[i].name] = { data: sounds[i].data, type: sounds[i].type };
+      }
+      callback(sounds);
+    };
+    request.onerror = function() { callback([]); };
+  });
+}
+
+// --- Rendu des boutons custom ---
+function renderCustomSounds() {
+  var container = $('soundboard-custom');
+  var names = Object.keys(customSoundsCache);
+  if (names.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < names.length; i++) {
+    var name = names[i];
+    var safeName = name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    html += '<div class="sb-custom">';
+    html += '<button class="sb-btn" onclick="playCustomSound(\'' + safeName + '\')">';
+    html += '🎵 ' + name;
+    html += '</button>';
+    html += '<div class="sb-delete" onclick="deleteCustomSound(\'' + safeName + '\')" title="Supprimer">✕</div>';
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+// --- Jouer un son custom localement ---
+function playCustomSound(name) {
+  var sound = customSoundsCache[name];
+  if (!sound) { addLog('❌ Son introuvable: ' + name); return; }
+
+  try {
+    var blob = new Blob([sound.data], { type: sound.type });
+    var url = URL.createObjectURL(blob);
+    var audio = new Audio(url);
+    audio.volume = settings.volume / 100;
+    audio.play();
+    audio.onended = function() { URL.revokeObjectURL(url); };
+  } catch(e) {
+    addLog('❌ Lecture impossible: ' + e.message);
+    return;
+  }
+
+  // Envoyer aux autres via socket
+  if (socket && socket.connected) {
+    try {
+      var base64 = arrayBufferToBase64(sound.data);
+      socket.emit('soundboard:custom', {
+        name: name,
+        audio: base64,
+        type: sound.type
+      });
+    } catch(e) {
+      addLog('⚠️ Envoi échoué (fichier trop gros?)');
+    }
+  }
+
+  addLog('🎵 Son custom: ' + name);
+}
+
+// --- Jouer un son custom reçu ---
+function playReceivedCustomSound(name, base64Audio, mimeType) {
+  try {
+    var arrayBuffer = base64ToArrayBuffer(base64Audio);
+    var blob = new Blob([arrayBuffer], { type: mimeType || 'audio/mpeg' });
+    var url = URL.createObjectURL(blob);
+    var audio = new Audio(url);
+    audio.volume = settings.volume / 100;
+    audio.play();
+    audio.onended = function() { URL.revokeObjectURL(url); };
+  } catch(e) {
+    addLog('❌ Lecture reçue impossible');
+  }
+}
+
+// --- Conversion Base64 ---
+function arrayBufferToBase64(buffer) {
+  var bytes = new Uint8Array(buffer);
+  var binary = '';
+  var chunkSize = 8192;
+  for (var i = 0; i < bytes.length; i += chunkSize) {
+    var chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode.apply(null, chunk);
+  }
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+  var binary = atob(base64);
+  var bytes = new Uint8Array(binary.length);
+  for (var i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+// --- Upload popup ---
+function openSoundUpload() {
+  var count = Object.keys(customSoundsCache).length;
+  if (count >= MAX_CUSTOM_SOUNDS) {
+    addLog('⚠️ Maximum ' + MAX_CUSTOM_SOUNDS + ' sons custom atteint');
+    return;
+  }
+  pendingUploadBuffer = null;
+  pendingUploadType = null;
+  $('sound-name-input').value = '';
+  $('sound-file-name').textContent = 'Aucun fichier';
+  $('sound-preview-btn').disabled = true;
+  $('sound-save-btn').disabled = true;
+  $('sound-upload-error').textContent = '';
+  $('sound-upload-popup').classList.add('open');
+  setTimeout(function() { $('sound-name-input').focus(); }, 100);
+}
+
+function closeSoundUpload() {
+  $('sound-upload-popup').classList.remove('open');
+  pendingUploadBuffer = null;
+  pendingUploadType = null;
+}
+
+// --- Fichier sélectionné ---
+document.getElementById('sound-file-input').addEventListener('change', function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+
+  $('sound-upload-error').textContent = '';
+
+  // Vérifier la taille
+  if (file.size > MAX_SOUND_SIZE) {
+    $('sound-upload-error').textContent = '❌ Fichier trop gros (' + Math.round(file.size / 1024) + ' KB). Max: ' + Math.round(MAX_SOUND_SIZE / 1024) + ' KB';
+    $('sound-file-name').textContent = file.name + ' (trop gros)';
+    $('sound-preview-btn').disabled = true;
+    $('sound-save-btn').disabled = true;
+    return;
+  }
+
+  // Vérifier le type
+  var validTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/x-wav'];
+  if (validTypes.indexOf(file.type) === -1 && !file.name.match(/\.(mp3|wav|ogg|webm)$/i)) {
+    $('sound-upload-error').textContent = '❌ Format non supporté. Utilisez MP3, WAV ou OGG.';
+    $('sound-preview-btn').disabled = true;
+    $('sound-save-btn').disabled = true;
+    return;
+  }
+
+  // Lire le fichier
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    pendingUploadBuffer = ev.target.result;
+    pendingUploadType = file.type || 'audio/mpeg';
+    $('sound-file-name').textContent = file.name + ' (' + Math.round(file.size / 1024) + ' KB)';
+    $('sound-preview-btn').disabled = false;
+    $('sound-save-btn').disabled = false;
+
+    // Auto-remplir le nom si vide
+    if (!$('sound-name-input').value.trim()) {
+      var autoName = file.name.replace(/\.[^.]+$/, '').slice(0, 20).toUpperCase();
+      $('sound-name-input').value = autoName;
+    }
+  };
+  reader.onerror = function() {
+    $('sound-upload-error').textContent = '❌ Erreur de lecture du fichier';
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+// --- Écouter avant de sauvegarder ---
+function previewUploadSound() {
+  if (!pendingUploadBuffer) return;
+  try {
+    var blob = new Blob([pendingUploadBuffer], { type: pendingUploadType });
+    var url = URL.createObjectURL(blob);
+    var audio = new Audio(url);
+    audio.volume = settings.volume / 100;
+    audio.play();
+    audio.onended = function() { URL.revokeObjectURL(url); };
+  } catch(e) {
+    $('sound-upload-error').textContent = '❌ Impossible de lire ce fichier';
+  }
+}
+
+// --- Sauvegarder ---
+function saveCustomSound() {
+  if (!pendingUploadBuffer) return;
+
+  var name = $('sound-name-input').value.trim().toUpperCase();
+  if (!name) {
+    $('sound-upload-error').textContent = '⚠️ Donnez un nom au son';
+    return;
+  }
+  if (name.length > 20) name = name.slice(0, 20);
+
+  // Vérifier doublon
+  if (customSoundsCache[name]) {
+    $('sound-upload-error').textContent = '⚠️ Un son avec ce nom existe déjà';
+    return;
+  }
+
+  $('sound-save-btn').disabled = true;
+  $('sound-save-btn').textContent = 'SAUVEGARDE...';
+
+  saveSoundToDB(name, pendingUploadBuffer, pendingUploadType, function(success) {
+    if (success) {
+      addLog('🎵 Son ajouté: ' + name);
+      renderCustomSounds();
+      closeSoundUpload();
+    } else {
+      $('sound-upload-error').textContent = '❌ Erreur de sauvegarde';
+      $('sound-save-btn').disabled = false;
+      $('sound-save-btn').textContent = '💾 SAUVEGARDER';
+    }
+  });
+}
+
+// --- Supprimer ---
+function deleteCustomSound(name) {
+  if (!confirm('Supprimer le son "' + name + '" ?')) return;
+  deleteSoundFromDB(name, function(success) {
+    if (success) {
+      addLog('🗑️ Son supprimé: ' + name);
+      renderCustomSounds();
+    }
+  });
+}
+
+// --- Charger les sons au démarrage ---
+loadAllSounds(function() {
+  renderCustomSounds();
+});
+  loadSettings();updateChannelDisplay();
 (async function(){try{var d=await navigator.mediaDevices.enumerateDevices();var m=d.filter(function(x){return x.kind==='audioinput'});
 if(m.length>0){$('boot-mic-info').textContent='🎤 '+m.length+' micro(s)';$('boot-mic-info').style.color='#33ff66'}
 else{$('boot-mic-info').textContent='⚠️ Aucun micro détecté';$('boot-mic-info').style.color='#ffaa00'}}catch(e){}})();
