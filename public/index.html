@@ -200,7 +200,7 @@ body{background:#0a0d0a;color:#33ff66;font-family:'Courier New',monospace;displa
   <div id="boot-logo">◉ RADIO PTT</div>
   <input id="boot-callsign" placeholder="VOTRE INDICATIF" autocomplete="off" spellcheck="false">
   <input id="boot-status-input" placeholder="STATUT (ex: En patrouille)" autocomplete="off" spellcheck="false">
-  <button onclick="startApp()">⚡ CONNECTER</button>
+  <button id="boot-connect" type="button">⚡ CONNECTER</button>
   <div id="boot-mic-info"></div>
   <div id="boot-status-text">v3.0 — Radio PTT Professionnelle</div>
 </div>
@@ -1182,6 +1182,15 @@ loadSettings();updateChannelDisplay();
 (async function(){try{var d=await navigator.mediaDevices.enumerateDevices();var m=d.filter(function(x){return x.kind==='audioinput'});
 if(m.length>0){$('boot-mic-info').textContent='🎤 '+m.length+' micro(s)';$('boot-mic-info').style.color='#33ff66'}
 else{$('boot-mic-info').textContent='⚠️ Aucun micro détecté';$('boot-mic-info').style.color='#ffaa00'}}catch(e){}})();
+
+  document.getElementById('boot-connect').addEventListener('click', function() {
+  startApp();
+});
+
+document.getElementById('boot-callsign').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') startApp();
+});
+
 </script>
 </body>
 </html>
