@@ -2,198 +2,844 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Radio PTT - Test</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>RADIO PTT</title>
+<meta name="theme-color" content="#0a0f0a">
 <style>
-*{box-sizing:border-box}
-body{margin:0;background:#0b0f0c;color:#3f6;font-family:monospace;
-     display:flex;flex-direction:column;align-items:center;padding:20px;gap:12px}
-h1{font-size:18px;letter-spacing:2px}
-input,select,button{font-family:monospace;font-size:16px;padding:10px;
-     background:#111;color:#3f6;border:1px solid #2a4;border-radius:6px}
-#lcd{width:100%;max-width:420px;background:#0a1a0f;border:2px solid #2a4;
-     border-radius:8px;padding:14px;line-height:1.7}
-#status{font-size:22px;font-weight:bold}
-#ptt{width:100%;max-width:420px;height:150px;font-size:28px;font-weight:bold;
-     background:#3a0d0d;color:#f66;border:3px solid #a33;border-radius:14px;
-     user-select:none;touch-action:none}
-#ptt.tx{background:#c00;color:#fff;border-color:#f88;box-shadow:0 0 30px #f00}
-.row{display:flex;gap:8px;width:100%;max-width:420px}
-.row>*{flex:1}
-#log{width:100%;max-width:420px;height:130px;overflow:auto;background:#060906;
-     border:1px solid #1a3;padding:8px;font-size:12px;border-radius:6px}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow-x:hidden}
+body{
+  background:#0a0d0a;
+  color:#33ff66;
+  font-family:'Courier New',monospace;
+  display:flex;flex-direction:column;align-items:center;
+}
+
+/* BOOT SCREEN */
+#boot-screen{
+  position:fixed;inset:0;z-index:9999;background:#000;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:20px;padding:30px;transition:opacity 0.6s;
+}
+#boot-screen.hidden{opacity:0;pointer-events:none}
+#boot-logo{
+  font-size:42px;letter-spacing:8px;
+  text-shadow:0 0 20px #33ff66,0 0 40px #11aa33;
+  animation:pulse 1.5s infinite;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+#boot-screen input,#boot-screen button{
+  font-family:'Courier New',monospace;font-size:16px;
+  padding:14px 20px;width:100%;max-width:380px;
+  background:#0d1a0f;color:#33ff66;
+  border:2px solid #1a5c2a;border-radius:10px;
+  outline:none;text-align:center;letter-spacing:2px;
+}
+#boot-screen input::placeholder{color:#1a5c2a}
+#boot-screen button{
+  cursor:pointer;background:#0d2e14;border-color:#33ff66;
+  font-weight:bold;transition:all 0.2s;
+}
+#boot-screen button:hover{background:#1a4d24;box-shadow:0 0 15px #33ff6644}
+#boot-screen button:disabled{opacity:0.4;cursor:not-allowed}
+#boot-status{font-size:12px;color:#1a5c2a;text-align:center;max-width:380px}
+#boot-mic-info{font-size:11px;color:#ffaa00;text-align:center;max-width:380px;min-height:40px}
+
+/* APP */
+#app{
+  display:none;flex-direction:column;align-items:center;
+  width:100%;max-width:480px;padding:8px 12px;gap:6px;min-height:100vh;
+}
+#app.visible{display:flex}
+
+/* HEADER */
+#header{
+  width:100%;display:flex;justify-content:space-between;align-items:center;
+  padding:6px 0;border-bottom:1px solid #1a3d1f;
+}
+#header .brand{font-size:14px;letter-spacing:3px;font-weight:bold}
+#header .info{font-size:11px;color:#1a5c2a;display:flex;gap:10px;align-items:center}
+#header .dot{
+  width:8px;height:8px;border-radius:50%;display:inline-block;
+  background:#33ff66;box-shadow:0 0 6px #33ff66;animation:dotpulse 2s infinite;
+}
+#header .dot.off{background:#555;box-shadow:none;animation:none}
+@keyframes dotpulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+/* LCD */
+#lcd{
+  width:100%;background:#040d06;
+  border:2px solid #1a4d24;border-radius:10px;
+  padding:12px 14px;
+  box-shadow:0 0 30px #0a2a1244 inset,0 2px 8px #00000088;
+  position:relative;overflow:hidden;
+}
+#lcd::before{
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,#00000015 2px,#00000015 4px);
+  pointer-events:none;
+}
+.lcd-row{display:flex;justify-content:space-between;align-items:center;position:relative;z-index:1}
+#lcd-channel{font-size:36px;font-weight:bold;letter-spacing:4px;line-height:1.2}
+#lcd-freq{font-size:13px;color:#1a5c2a}
+#lcd-status{
+  font-size:20px;font-weight:bold;text-align:center;
+  letter-spacing:4px;padding:6px 0;
+  text-shadow:0 0 10px currentColor;position:relative;z-index:1;
+}
+#lcd-who-talks{font-size:12px;color:#ffaa00;text-align:center;min-height:16px;position:relative;z-index:1}
+.lcd-bottom{font-size:11px;color:#1a5c2a;position:relative;z-index:1}
+
+/* VU */
+#vu-container{width:100%;padding:0 2px}
+#vu{width:100%;height:6px;background:#0a1a0f;border-radius:3px;overflow:hidden}
+#vu-bar{height:100%;width:0%;background:linear-gradient(90deg,#33ff66,#aaff33,#ffaa00,#ff3333);border-radius:3px;transition:width 0.06s}
+
+/* CANAUX NAV */
+#channel-nav{width:100%;display:flex;gap:6px;align-items:center}
+#channel-nav button{
+  font-family:'Courier New',monospace;font-size:22px;font-weight:bold;
+  width:52px;height:48px;
+  background:#0d1a0f;color:#33ff66;border:1px solid #1a4d24;
+  border-radius:8px;cursor:pointer;transition:all 0.1s;
+  display:flex;align-items:center;justify-content:center;
+}
+#channel-nav button:active{background:#1a3d1f;border-color:#33ff66}
+#ch-display{
+  flex:1;text-align:center;font-size:15px;font-weight:bold;
+  background:#040d06;border:1px solid #1a4d24;border-radius:8px;
+  padding:10px 4px;cursor:pointer;
+}
+#ch-display:hover{border-color:#33ff66}
+
+/* CHANNEL POPUP */
+#ch-popup{
+  display:none;position:fixed;inset:0;z-index:100;
+  background:#000000cc;align-items:center;justify-content:center;padding:20px;
+}
+#ch-popup.open{display:flex}
+#ch-list{
+  background:#0a1a0f;border:2px solid #1a4d24;border-radius:12px;
+  padding:10px;max-height:80vh;overflow-y:auto;width:100%;max-width:400px;
+}
+#ch-list h3{text-align:center;margin-bottom:8px;font-size:14px;letter-spacing:2px}
+.ch-item{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:10px 12px;border-bottom:1px solid #0d2e14;
+  cursor:pointer;border-radius:6px;transition:background 0.1s;
+}
+.ch-item:hover{background:#1a2e1f}
+.ch-item.active{background:#1a3d1f;border-color:#33ff66}
+.ch-item.emergency{color:#ff4444}
+.ch-item .ch-users{
+  font-size:11px;color:#1a5c2a;background:#061008;padding:2px 8px;border-radius:10px;
+}
+
+/* PTT */
+#ptt-container{width:100%;padding:4px 0}
+#ptt{
+  width:100%;height:140px;
+  font-family:'Courier New',monospace;font-size:30px;font-weight:bold;letter-spacing:6px;
+  background:linear-gradient(180deg,#2a0808,#1a0505);color:#ff4444;
+  border:3px solid #661111;border-radius:16px;
+  cursor:pointer;user-select:none;touch-action:none;-webkit-user-select:none;
+  transition:all 0.08s;
+  box-shadow:0 4px 12px #00000066;position:relative;overflow:hidden;
+}
+#ptt::after{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(circle at 50% 40%,#ffffff08,transparent 60%);pointer-events:none;
+}
+#ptt:active,#ptt.tx{
+  background:linear-gradient(180deg,#cc0000,#880000);color:#fff;border-color:#ff6666;
+  box-shadow:0 0 40px #ff000066,0 0 80px #aa000033;transform:scale(0.98);
+}
+#ptt:disabled{opacity:0.3;cursor:not-allowed;transform:none}
+#ptt .ptt-sub{font-size:11px;letter-spacing:2px;margin-top:4px;opacity:0.6}
+#tx-led{
+  width:12px;height:12px;border-radius:50%;background:#330000;border:1px solid #550000;
+  position:absolute;top:10px;right:14px;transition:all 0.1s;
+}
+#ptt.tx #tx-led{
+  background:#ff0000;border-color:#ff6666;box-shadow:0 0 10px #ff0000;animation:txblink 0.4s infinite;
+}
+@keyframes txblink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* BOTTOM BUTTONS */
+#bottom-buttons{width:100%;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+#bottom-buttons button{
+  font-family:'Courier New',monospace;font-size:11px;font-weight:bold;
+  padding:12px 4px;letter-spacing:1px;
+  background:#0d1a0f;color:#33ff66;border:1px solid #1a4d24;
+  border-radius:8px;cursor:pointer;transition:all 0.1s;
+}
+#bottom-buttons button:active{background:#1a3d1f}
+#btn-sos{background:#1a0505!important;color:#ff3333!important;border-color:#661111!important}
+#btn-sos.active{background:#cc0000!important;color:#fff!important;border-color:#ff6666!important;animation:blink 0.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.5}}
+
+/* EMERGENCY BANNER */
+#emergency-banner{
+  display:none;width:100%;background:#cc0000;color:#fff;text-align:center;
+  padding:10px;font-size:14px;font-weight:bold;letter-spacing:3px;
+  border-radius:8px;animation:blink 0.6s infinite;
+}
+#emergency-banner.show{display:block}
+
+/* PANELS */
+.panel{
+  display:none;width:100%;background:#040d06;border:1px solid #1a4d24;
+  border-radius:10px;padding:12px;max-height:50vh;overflow-y:auto;
+}
+.panel.open{display:block}
+.panel h3{font-size:13px;letter-spacing:2px;margin-bottom:8px;color:#33ff66;text-align:center}
+.panel-close{
+  float:right;cursor:pointer;font-size:18px;color:#ff4444;
+  background:none;border:none;font-family:monospace;
+}
+
+/* MEMBERS */
+.member{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:6px 8px;border-bottom:1px solid #0d2e14;
+}
+.member-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.member-dot.online{background:#33ff66;box-shadow:0 0 4px #33ff66}
+.member-dot.talking{background:#ff3333;box-shadow:0 0 4px #ff3333;animation:txblink 0.4s infinite}
+
+/* SETTINGS */
+.setting-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:8px 0;border-bottom:1px solid #0d2e14;font-size:12px;
+}
+.setting-row label{flex:1}
+.setting-row input[type=range]{width:120px;accent-color:#33ff66}
+.toggle{
+  width:44px;height:24px;background:#1a0505;border-radius:12px;
+  position:relative;cursor:pointer;border:1px solid #333;transition:all 0.2s;
+}
+.toggle.on{background:#0d2e14;border-color:#33ff66}
+.toggle::after{
+  content:'';position:absolute;top:2px;left:2px;
+  width:18px;height:18px;border-radius:50%;background:#666;transition:all 0.2s;
+}
+.toggle.on::after{left:22px;background:#33ff66}
+
+/* TEXT MESSAGES */
+#text-panel .msg{padding:4px 0;border-bottom:1px solid #0d2e1444;font-size:11px}
+#text-panel .msg .ts{color:#1a5c2a}
+#text-panel .msg .cs{color:#ffaa00}
+#text-input-row{display:flex;gap:6px;margin-top:8px}
+#text-input{
+  flex:1;background:#0a1a0f;color:#33ff66;border:1px solid #1a4d24;
+  padding:8px;border-radius:6px;font-family:monospace;font-size:12px;
+}
+#text-send{
+  background:#0d2e14;color:#33ff66;border:1px solid #33ff66;
+  padding:8px 14px;border-radius:6px;cursor:pointer;font-family:monospace;font-weight:bold;
+}
+
+/* LOG */
+#log-panel .log-entry{font-size:10px;padding:2px 0;border-bottom:1px solid #0d2e1422}
+
+/* RESPONSIVE */
+@media(max-width:500px){
+  #ptt{height:160px;font-size:32px}
+  #lcd-channel{font-size:28px}
+  #bottom-buttons{grid-template-columns:1fr 1fr;gap:4px}
+}
 </style>
 </head>
 <body>
-<h1>◉ RADIO PTT — TEST</h1>
 
-<div class="row">
-  <input id="callsign" placeholder="INDICATIF" value="UNIT-1">
-  <select id="channel">
-    <option value="1">CH 1</option><option value="2">CH 2</option>
-    <option value="3">CH 3</option><option value="9">CH 9 URG</option>
-  </select>
-</div>
-<button id="connect">CONNECTER</button>
-
-<div id="lcd">
-  <div>CANAL : <b id="chLabel">--</b></div>
-  <div>STATUT : <span id="status">HORS LIGNE</span></div>
-  <div>EN LIGNE : <span id="who">-</span></div>
-  <div>MEMBRES : <span id="members">0</span></div>
+<!-- BOOT -->
+<div id="boot-screen">
+  <div id="boot-logo">◉ RADIO PTT</div>
+  <input id="boot-callsign" placeholder="VOTRE INDICATIF" value="" autocomplete="off" spellcheck="false">
+  <button id="boot-connect" onclick="startApp()">⚡ CONNECTER</button>
+  <div id="boot-mic-info"></div>
+  <div id="boot-status">v2.0 — Push-To-Talk Professionnel</div>
 </div>
 
-<button id="ptt">PTT</button>
-<div id="log"></div>
-<div id="audios"></div>
+<!-- APP -->
+<div id="app">
+
+  <div id="header">
+    <span class="brand">◉ RADIO PTT</span>
+    <span class="info">
+      <span id="conn-dot" class="dot off"></span>
+      <span id="clock">00:00:00</span>
+      <span id="my-callsign">---</span>
+    </span>
+  </div>
+
+  <div id="emergency-banner">⚠️ URGENCE ACTIVÉE ⚠️</div>
+
+  <div id="lcd">
+    <div class="lcd-row">
+      <div>
+        <div id="lcd-channel">CH 01</div>
+        <div id="lcd-freq">462.5625 MHz</div>
+      </div>
+      <div style="text-align:right">
+        <div id="lcd-ch-name">GÉNÉRAL</div>
+        <div id="lcd-members" style="font-size:11px;color:#1a5c2a">0 en ligne</div>
+      </div>
+    </div>
+    <div id="lcd-status" style="color:#33ff66">HORS LIGNE</div>
+    <div id="lcd-who-talks"></div>
+    <div class="lcd-row lcd-bottom">
+      <span>SQ:<span id="lcd-sq">3</span></span>
+      <span>VOL:<span id="lcd-vol">80</span>%</span>
+      <span>PWR:HIGH</span>
+      <span id="lcd-signal">▁▃▅▇</span>
+    </div>
+  </div>
+
+  <div id="vu-container"><div id="vu"><div id="vu-bar"></div></div></div>
+
+  <div id="channel-nav">
+    <button id="ch-down" onclick="changeChannel(-1)">◀</button>
+    <div id="ch-display" onclick="openChannelList()">CH 01 — GÉNÉRAL</div>
+    <button id="ch-up" onclick="changeChannel(1)">▶</button>
+    <button id="btn-scan" onclick="toggleScan()" style="font-size:11px;width:60px">SCAN</button>
+  </div>
+
+  <div id="ptt-container">
+    <button id="ptt" disabled>
+      🎙️ PTT
+      <div class="ptt-sub">MAINTENIR POUR PARLER</div>
+      <div id="tx-led"></div>
+    </button>
+  </div>
+
+  <div id="bottom-buttons">
+    <button onclick="togglePanel('members-panel')">👥 MEMBRES</button>
+    <button onclick="togglePanel('text-panel')">💬 MSG</button>
+    <button id="btn-sos" onclick="toggleSOS()">🚨 SOS</button>
+    <button onclick="togglePanel('settings-panel')">⚙️ RÉGLAGES</button>
+    <button onclick="togglePanel('log-panel')">📋 LOG</button>
+    <button id="btn-monitor" onclick="toggleMonitor()">📡 MON</button>
+  </div>
+
+  <!-- MEMBRES -->
+  <div id="members-panel" class="panel">
+    <button class="panel-close" onclick="togglePanel('members-panel')">✕</button>
+    <h3>👥 MEMBRES DU CANAL</h3>
+    <div id="members-list">Aucun membre</div>
+  </div>
+
+  <!-- MESSAGES -->
+  <div id="text-panel" class="panel">
+    <button class="panel-close" onclick="togglePanel('text-panel')">✕</button>
+    <h3>💬 MESSAGES</h3>
+    <div id="text-messages"></div>
+    <div id="text-input-row">
+      <input id="text-input" placeholder="Message..." maxlength="200">
+      <button id="text-send" onclick="sendText()">ENVOYER</button>
+    </div>
+  </div>
+
+  <!-- RÉGLAGES -->
+  <div id="settings-panel" class="panel">
+    <button class="panel-close" onclick="togglePanel('settings-panel')">✕</button>
+    <h3>⚙️ RÉGLAGES</h3>
+    <div class="setting-row">
+      <label>🔊 Volume</label>
+      <input type="range" id="set-volume" min="0" max="100" value="80" oninput="setVolume(this.value)">
+      <span id="set-vol-val">80%</span>
+    </div>
+    <div class="setting-row">
+      <label>📶 Squelch</label>
+      <input type="range" id="set-squelch" min="0" max="10" value="3" oninput="setSquelch(this.value)">
+      <span id="set-sq-val">3</span>
+    </div>
+    <div class="setting-row">
+      <label>🔔 Roger Beep</label>
+      <div class="toggle on" id="set-roger" onclick="toggleSetting('roger')"></div>
+    </div>
+    <div class="setting-row">
+      <label>🎤 VOX (auto)</label>
+      <div class="toggle" id="set-vox" onclick="toggleSetting('vox')"></div>
+    </div>
+    <div class="setting-row">
+      <label>📢 VOX Seuil</label>
+      <input type="range" id="set-vox-level" min="1" max="10" value="5" oninput="setVoxLevel(this.value)">
+      <span id="set-vox-val">5</span>
+    </div>
+    <div class="setting-row">
+      <label>📡 Grésillement</label>
+      <div class="toggle" id="set-static" onclick="toggleSetting('static')"></div>
+    </div>
+    <div class="setting-row">
+      <label>🎤 Test micro</label>
+      <button onclick="testMic()" style="font-size:11px;padding:6px 12px;background:#0d2e14;color:#33ff66;border:1px solid #33ff66;border-radius:4px;cursor:pointer">TESTER</button>
+    </div>
+    <div class="setting-row">
+      <label>🔌 Déconnecter</label>
+      <button onclick="disconnect()" style="font-size:11px;padding:6px 12px;background:#1a0505;color:#ff3333;border:1px solid #661111;border-radius:4px;cursor:pointer">QUITTER</button>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div id="log-panel" class="panel">
+    <button class="panel-close" onclick="togglePanel('log-panel')">✕</button>
+    <h3>📋 JOURNAL</h3>
+    <div id="log-entries"></div>
+    <button onclick="clearLog()" style="margin-top:8px;font-size:11px;padding:6px 12px;background:#1a0505;color:#ff3333;border:1px solid #661111;border-radius:4px;cursor:pointer;width:100%">EFFACER</button>
+  </div>
+
+</div>
+
+<!-- POPUP CANAUX -->
+<div id="ch-popup" onclick="closeChannelList(event)">
+  <div id="ch-list">
+    <h3>📻 SÉLECTION CANAL</h3>
+    <div id="ch-items"></div>
+  </div>
+</div>
+
+<div id="audios" style="display:none"></div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-const ICE = { iceServers:[
+/* ============================================================
+   CONFIG
+   ============================================================ */
+var CHANNELS_INFO={
+  1:{name:'GÉNÉRAL',freq:'462.5625'},
+  2:{name:'OPÉRATIONS',freq:'462.5875'},
+  3:{name:'LOGISTIQUE',freq:'462.6125'},
+  4:{name:'TERRAIN A',freq:'462.6375'},
+  5:{name:'TERRAIN B',freq:'462.6625'},
+  6:{name:'COORDINATION',freq:'462.6875'},
+  7:{name:'SÉCURITÉ',freq:'462.7125'},
+  8:{name:'RÉSERVE',freq:'462.7375'},
+  9:{name:'URGENCE',freq:'462.7625'},
+  10:{name:'COMMANDEMENT',freq:'467.5625'},
+  11:{name:'TACTIQUE A',freq:'467.5875'},
+  12:{name:'TACTIQUE B',freq:'467.6125'},
+  13:{name:'SUPPORT',freq:'467.6375'},
+  14:{name:'ADMIN',freq:'467.6625'},
+  15:{name:'MÉTÉO',freq:'467.6875'},
+  16:{name:'APPEL GÉN.',freq:'467.7125'}
+};
+var ICE_CONFIG={iceServers:[
   {urls:'stun:stun.l.google.com:19302'},
+  {urls:'stun:stun1.l.google.com:19302'},
   {urls:'stun:global.stun.twilio.com:3478'}
 ]};
 
-let socket, localStream, myId;
-const peers = {};
-const $ = id => document.getElementById(id);
-const log = m => { const d=$('log'); d.innerHTML += m+'<br>'; d.scrollTop=d.scrollHeight; };
+/* ============================================================
+   ÉTAT
+   ============================================================ */
+var socket=null,localStream=null,currentChannel=1,myId=null,myCallsign='';
+var isTxing=false,spaceDown=false,sosActive=false,sosInterval=null,sosClicks=0;
+var scanning=false,scanInterval=null,monitoring=false;
+var audioCtx=null,gainNode=null,staticNode=null,staticGain=null;
+var voxAnalyser=null,voxInterval=null,channelsStatus=[],logEntries=[];
+var peers={};
+var settings={volume:80,squelch:3,roger:true,vox:false,voxLevel:5,staticNoise:false};
 
-// --- Sons ---
-let AC;
-function beep(freq, dur=80, type='square'){
-  AC = AC || new (window.AudioContext||window.webkitAudioContext)();
-  const o=AC.createOscillator(), g=AC.createGain();
-  o.type=type; o.frequency.value=freq;
-  g.gain.setValueAtTime(0.15, AC.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime+dur/1000);
-  o.connect(g); g.connect(AC.destination);
-  o.start(); o.stop(AC.currentTime+dur/1000);
+/* ============================================================
+   UTILS
+   ============================================================ */
+function $(id){return document.getElementById(id)}
+function pad(n){return n<10?'0'+n:''+n}
+function now(){var d=new Date();return pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())}
+function addLog(msg){
+  logEntries.push({time:now(),msg:msg});
+  if(logEntries.length>100)logEntries.shift();
+  renderLog();
 }
-const rogerBeep = () => { beep(800,60); setTimeout(()=>beep(1200,90),70); };
+function renderLog(){
+  var el=$('log-entries');if(!el)return;var h='';
+  for(var i=logEntries.length-1;i>=0;i--)
+    h+='<div class="log-entry">['+logEntries[i].time+'] '+logEntries[i].msg+'</div>';
+  el.innerHTML=h;
+}
+function clearLog(){logEntries=[];renderLog()}
+function updateClock(){$('clock').textContent=now()}
+setInterval(updateClock,1000);updateClock();
 
-// --- Connexion ---
-$('connect').onclick = async () => {
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true }
-    });
-    localStream.getAudioTracks()[0].enabled = false; // muet par défaut
-  } catch(e){ return log('❌ MICRO REFUSÉ : '+e.message); }
+function setLCDStatus(t,c){$('lcd-status').textContent=t;$('lcd-status').style.color=c||'#33ff66'}
+function updateChannelDisplay(){
+  var info=CHANNELS_INFO[currentChannel]||{name:'CH '+currentChannel,freq:'---'};
+  $('lcd-channel').textContent='CH '+pad(currentChannel);
+  $('lcd-freq').textContent=info.freq+' MHz';
+  $('lcd-ch-name').textContent=info.name;
+  $('ch-display').textContent='CH '+pad(currentChannel)+' — '+info.name;
+}
 
-  socket = io();
+/* ============================================================
+   AUDIO / SONS
+   ============================================================ */
+function getAC(){
+  if(!audioCtx){audioCtx=new(window.AudioContext||window.webkitAudioContext)();gainNode=audioCtx.createGain();gainNode.gain.value=settings.volume/100;gainNode.connect(audioCtx.destination)}
+  if(audioCtx.state==='suspended')audioCtx.resume();return audioCtx;
+}
+function beep(freq,dur,type,vol){
+  try{var ac=getAC(),o=ac.createOscillator(),g=ac.createGain();
+  o.type=type||'square';o.frequency.value=freq;
+  var v=(vol||0.12)*(settings.volume/100);
+  g.gain.setValueAtTime(v,ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+dur/1000);
+  o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+dur/1000)}catch(e){}
+}
+function rogerBeep(){if(!settings.roger)return;beep(800,50,'sine',0.1);setTimeout(function(){beep(1000,50,'sine',0.1)},60);setTimeout(function(){beep(1200,80,'sine',0.12)},120)}
+function beepTXStart(){beep(1200,70,'square',0.12)}
+function beepChannel(){beep(600,40,'sine',0.08)}
+function beepError(){beep(200,350,'sawtooth',0.15)}
+function beepRX(){beep(1000,35,'sine',0.07)}
+function beepScan(){beep(500,25,'sine',0.05)}
+function beepConnect(){beep(400,70,'sine',0.1);setTimeout(function(){beep(600,70,'sine',0.1)},80);setTimeout(function(){beep(800,100,'sine',0.12)},160)}
+function beepDisconnect(){beep(800,70,'sine',0.1);setTimeout(function(){beep(600,70,'sine',0.1)},80);setTimeout(function(){beep(400,100,'sine',0.1)},160)}
 
-  socket.on('connect', () => {
-    myId = socket.id;
-    log('✅ Connecté au serveur');
-    socket.emit('user:join', { callsign: $('callsign').value });
-    socket.emit('channel:join', { channelId: $('channel').value });
-    $('status').textContent = 'STANDBY';
-    $('chLabel').textContent = 'CH ' + $('channel').value;
-    beep(400,60); setTimeout(()=>beep(800,80),70);
-  });
+function startSiren(){
+  if(sosInterval)return;var up=true;
+  sosInterval=setInterval(function(){
+    try{var ac=getAC(),o=ac.createOscillator(),g=ac.createGain();
+    o.type='sawtooth';o.frequency.setValueAtTime(up?500:900,ac.currentTime);
+    o.frequency.linearRampToValueAtTime(up?900:500,ac.currentTime+0.4);
+    var v=0.2*(settings.volume/100);g.gain.setValueAtTime(v,ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.45);
+    o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+0.45);up=!up}catch(e){}
+  },500);
+}
+function stopSiren(){if(sosInterval){clearInterval(sosInterval);sosInterval=null}}
 
-  socket.on('disconnect', () => { $('status').textContent='HORS LIGNE'; log('⚠️ Déconnecté'); });
+function startStatic(){
+  if(staticNode)return;
+  try{var ac=getAC(),bs=2*ac.sampleRate,buf=ac.createBuffer(1,bs,ac.sampleRate),d=buf.getChannelData(0);
+  for(var i=0;i<bs;i++)d[i]=Math.random()*2-1;
+  staticNode=ac.createBufferSource();staticNode.buffer=buf;staticNode.loop=true;
+  staticGain=ac.createGain();staticGain.gain.value=0.015*(settings.volume/100);
+  staticNode.connect(staticGain);staticGain.connect(ac.destination);staticNode.start()}catch(e){}
+}
+function stopStatic(){if(staticNode){try{staticNode.stop()}catch(e){}staticNode=null;staticGain=null}}
 
-  socket.on('channel:joined', ({channelId, peers:list}) => {
-    log('📻 Canal '+channelId+' ('+list.length+' pair(s))');
-    list.forEach(p => createPeer(p.id, true));
-  });
+/* ============================================================
+   VU METRE
+   ============================================================ */
+function startVU(stream){
+  try{var ac=getAC(),src=ac.createMediaStreamSource(stream),an=ac.createAnalyser();
+  an.fftSize=256;src.connect(an);voxAnalyser=an;
+  var da=new Uint8Array(an.frequencyBinCount);
+  (function draw(){requestAnimationFrame(draw);an.getByteFrequencyData(da);
+  var s=0;for(var i=0;i<da.length;i++)s+=da[i];
+  $('vu-bar').style.width=Math.min(100,s/da.length*2.5)+'%'})()}catch(e){}
+}
 
-  socket.on('peer:joined', ({id, callsign}) => { log('➕ '+callsign); createPeer(id,false); });
-  socket.on('peer:left',   ({id}) => { closePeer(id); log('➖ pair parti'); });
+/* ============================================================
+   VOX
+   ============================================================ */
+function startVOX(){
+  if(voxInterval)return;var speaking=false,silenceCount=0;
+  var dataArr=voxAnalyser?new Uint8Array(voxAnalyser.frequencyBinCount):null;
+  voxInterval=setInterval(function(){
+    if(!settings.vox||!voxAnalyser||!socket||isTxing)return;
+    var threshold=settings.voxLevel*8;
+    voxAnalyser.getByteFrequencyData(dataArr);
+    var s=0;for(var i=0;i<dataArr.length;i++)s+=dataArr[i];var avg=s/dataArr.length;
+    if(avg>threshold&&!speaking){speaking=true;silenceCount=0;beepTXStart();socket.emit('ptt:start')}
+    else if(avg<=threshold&&speaking){silenceCount++;if(silenceCount>15){speaking=false;socket.emit('ptt:stop');setTX(false);rogerBeep()}}
+    else if(avg>threshold)silenceCount=0;
+  },50);
+}
+function stopVOX(){if(voxInterval){clearInterval(voxInterval);voxInterval=null}}
 
-  socket.on('channel:users', s => {
-    $('members').textContent = s.users.length;
-    $('who').textContent = s.users.map(u=>u.callsign).join(', ') || '-';
-  });
+/* ============================================================
+   SETTINGS
+   ============================================================ */
+function setVolume(v){
+  settings.volume=parseInt(v);$('set-vol-val').textContent=v+'%';$('lcd-vol').textContent=v;
+  if(gainNode)gainNode.gain.value=v/100;
+  var au=document.querySelectorAll('#audios audio');for(var i=0;i<au.length;i++)au[i].volume=v/100;
+  saveSettings();
+}
+function setSquelch(v){settings.squelch=parseInt(v);$('set-sq-val').textContent=v;$('lcd-sq').textContent=v;saveSettings()}
+function setVoxLevel(v){settings.voxLevel=parseInt(v);$('set-vox-val').textContent=v;saveSettings()}
+function toggleSetting(name){
+  var el=$('set-'+name);
+  if(name==='roger'){settings.roger=!settings.roger;el.classList.toggle('on',settings.roger)}
+  else if(name==='vox'){settings.vox=!settings.vox;el.classList.toggle('on',settings.vox);if(settings.vox){startVOX();addLog('VOX activé')}else{stopVOX();addLog('VOX désactivé')}}
+  else if(name==='static'){settings.staticNoise=!settings.staticNoise;el.classList.toggle('on',settings.staticNoise);if(settings.staticNoise)startStatic();else stopStatic()}
+  saveSettings();
+}
+function saveSettings(){try{localStorage.setItem('radio_settings',JSON.stringify(settings))}catch(e){}}
+function loadSettings(){
+  try{var s=JSON.parse(localStorage.getItem('radio_settings'));if(s)for(var k in s)if(settings.hasOwnProperty(k))settings[k]=s[k];
+  var cs=localStorage.getItem('radio_callsign');if(cs)$('boot-callsign').value=cs}catch(e){}
+  $('set-volume').value=settings.volume;$('set-vol-val').textContent=settings.volume+'%';$('lcd-vol').textContent=settings.volume;
+  $('set-squelch').value=settings.squelch;$('set-sq-val').textContent=settings.squelch;$('lcd-sq').textContent=settings.squelch;
+  $('set-vox-level').value=settings.voxLevel;$('set-vox-val').textContent=settings.voxLevel;
+  $('set-roger').classList.toggle('on',settings.roger);
+  $('set-vox').classList.toggle('on',settings.vox);
+  $('set-static').classList.toggle('on',settings.staticNoise);
+}
 
-  socket.on('ptt:granted',  () => { setTx(true); });
-  socket.on('ptt:denied',   d  => { beep(200,300,'sawtooth'); log('⛔ '+d.reason+' ('+d.by+')'); });
-  socket.on('ptt:timeout',  () => { setTx(false); log('⏱️ TIMEOUT'); });
+/* ============================================================
+   PANELS
+   ============================================================ */
+function togglePanel(id){
+  var p=$(id),open=p.classList.contains('open');
+  var all=document.querySelectorAll('.panel');for(var i=0;i<all.length;i++)all[i].classList.remove('open');
+  if(!open)p.classList.add('open');
+}
 
-  socket.on('ptt:active', ({userId, callsign}) => {
-    if(userId===myId) return;
-    $('status').textContent='RX ◀ '+callsign;
-    $('status').style.color='#3f6'; beep(1000,50);
-  });
-  socket.on('ptt:released', ({userId}) => {
-    if(userId===myId) return;
-    $('status').textContent='STANDBY'; rogerBeep();
-  });
-
-  // --- WebRTC ---
-  socket.on('webrtc:offer', async ({fromId, offer}) => {
-    const pc = peers[fromId] || createPeer(fromId,false);
-    await pc.setRemoteDescription(offer);
-    const ans = await pc.createAnswer();
-    await pc.setLocalDescription(ans);
-    socket.emit('webrtc:answer',{targetId:fromId, answer:ans});
-  });
-  socket.on('webrtc:answer', async ({fromId, answer}) => {
-    await peers[fromId]?.setRemoteDescription(answer);
-  });
-  socket.on('webrtc:ice', async ({fromId, candidate}) => {
-    try { await peers[fromId]?.addIceCandidate(candidate); } catch(e){}
-  });
-
-  socket.on('emergency:alert', d => { log('🚨 URGENCE : '+d.callsign); siren(); });
-};
-
-function createPeer(id, initiator){
-  if(peers[id]) return peers[id];
-  const pc = new RTCPeerConnection(ICE);
-  peers[id] = pc;
-  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-
-  pc.ontrack = e => {
-    let a = document.getElementById('a_'+id);
-    if(!a){ a=document.createElement('audio'); a.id='a_'+id; a.autoplay=true;
-            $('audios').appendChild(a); }
-    a.srcObject = e.streams[0];
-  };
-  pc.onicecandidate = e => {
-    if(e.candidate) socket.emit('webrtc:ice',{targetId:id, candidate:e.candidate});
-  };
-  if(initiator){
-    pc.onnegotiationneeded = async () => {
-      const off = await pc.createOffer();
-      await pc.setLocalDescription(off);
-      socket.emit('webrtc:offer',{targetId:id, offer:off});
-    };
+/* ============================================================
+   CANAUX
+   ============================================================ */
+function changeChannel(dir){
+  if(scanning)toggleScan();
+  currentChannel+=dir;if(currentChannel>16)currentChannel=1;if(currentChannel<1)currentChannel=16;
+  updateChannelDisplay();beepChannel();joinChannel(currentChannel);
+}
+function selectChannel(ch){
+  if(scanning)toggleScan();currentChannel=ch;
+  updateChannelDisplay();beepChannel();joinChannel(currentChannel);closeChannelList(null);
+}
+function joinChannel(ch){
+  if(!socket||!socket.connected)return;
+  var pids=Object.keys(peers);for(var i=0;i<pids.length;i++)closePeer(pids[i]);
+  socket.emit('channel:join',{channelId:ch});
+  addLog('📻 Canal '+ch+' '+(CHANNELS_INFO[ch]?CHANNELS_INFO[ch].name:''));
+}
+function openChannelList(){
+  var html='';
+  for(var i=1;i<=16;i++){
+    var info=CHANNELS_INFO[i],count=0;
+    for(var j=0;j<channelsStatus.length;j++)if(channelsStatus[j].id===i){count=channelsStatus[j].userCount;break}
+    var cls='ch-item';if(i===currentChannel)cls+=' active';if(i===9)cls+=' emergency';
+    html+='<div class="'+cls+'" onclick="selectChannel('+i+')"><span>CH '+pad(i)+' — '+info.name+'</span><span class="ch-users">'+count+' 👤</span></div>';
   }
+  $('ch-items').innerHTML=html;$('ch-popup').classList.add('open');
+  if(socket)socket.emit('channels:scan');
+}
+function closeChannelList(e){if(!e||e.target===$('ch-popup'))$('ch-popup').classList.remove('open')}
+
+/* ============================================================
+   SCAN
+   ============================================================ */
+function toggleScan(){
+  scanning=!scanning;$('btn-scan').style.color=scanning?'#ffaa00':'#33ff66';
+  $('btn-scan').style.borderColor=scanning?'#ffaa00':'#1a4d24';
+  if(scanning){addLog('🔍 Scan activé');if(socket)socket.emit('channels:scan');
+    scanInterval=setInterval(function(){
+      currentChannel++;if(currentChannel>16)currentChannel=1;updateChannelDisplay();beepScan();
+      for(var i=0;i<channelsStatus.length;i++)
+        if(channelsStatus[i].id===currentChannel&&channelsStatus[i].userCount>0){
+          toggleScan();joinChannel(currentChannel);addLog('🔍 Activité CH '+currentChannel);return}
+    },800);
+  }else{addLog('🔍 Scan arrêté');clearInterval(scanInterval);scanInterval=null;joinChannel(currentChannel)}
+}
+
+/* ============================================================
+   MONITOR
+   ============================================================ */
+function toggleMonitor(){
+  monitoring=!monitoring;$('btn-monitor').style.color=monitoring?'#ffaa00':'#33ff66';
+  $('btn-monitor').style.borderColor=monitoring?'#ffaa00':'#1a4d24';
+  addLog(monitoring?'📡 Monitor ON':'📡 Monitor OFF');
+}
+
+/* ============================================================
+   WEBRTC
+   ============================================================ */
+function createPeer(pid,initiator){
+  if(peers[pid])return peers[pid];if(!localStream)return null;
+  var pc=new RTCPeerConnection(ICE_CONFIG);peers[pid]=pc;
+  var tracks=localStream.getTracks();for(var i=0;i<tracks.length;i++)pc.addTrack(tracks[i],localStream);
+  pc.ontrack=function(e){
+    var a=document.getElementById('audio_'+pid);
+    if(!a){a=document.createElement('audio');a.id='audio_'+pid;a.autoplay=true;a.playsInline=true;a.volume=settings.volume/100;$('audios').appendChild(a)}
+    if(e.streams&&e.streams[0])a.srcObject=e.streams[0];
+  };
+  pc.onicecandidate=function(e){if(e.candidate&&socket)socket.emit('webrtc:ice',{targetId:pid,candidate:e.candidate})};
+  pc.onconnectionstatechange=function(){addLog('🔗 ['+pid.slice(0,6)+']: '+pc.connectionState)};
+  if(initiator)pc.onnegotiationneeded=function(){
+    pc.createOffer().then(function(o){return pc.setLocalDescription(o)}).then(function(){
+    socket.emit('webrtc:offer',{targetId:pid,offer:pc.localDescription})}).catch(function(e){addLog('❌ '+e.message)})};
   return pc;
 }
-function closePeer(id){
-  peers[id]?.close(); delete peers[id];
-  document.getElementById('a_'+id)?.remove();
+function closePeer(pid){if(peers[pid]){try{peers[pid].close()}catch(e){}delete peers[pid]}var a=document.getElementById('audio_'+pid);if(a)a.remove()}
+
+/* ============================================================
+   PTT
+   ============================================================ */
+function setTX(on){
+  if(!localStream)return;isTxing=on;
+  var t=localStream.getAudioTracks();for(var i=0;i<t.length;i++)t[i].enabled=on;
+  $('ptt').classList.toggle('tx',on);
+  if(on){setLCDStatus('TX ● EMISSION','#ff4444');$('lcd-who-talks').textContent='';if(settings.staticNoise)stopStatic()}
+  else{setLCDStatus('STANDBY','#33ff66');$('lcd-who-talks').textContent='';if(settings.staticNoise)startStatic()}
+}
+function pttDown(e){if(e&&e.preventDefault)e.preventDefault();if(!socket||!socket.connected||!localStream||isTxing)return;getAC();beepTXStart();socket.emit('ptt:start')}
+function pttUp(e){if(e&&e.preventDefault)e.preventDefault();if(!isTxing||!socket)return;socket.emit('ptt:stop');setTX(false);rogerBeep()}
+
+var pttBtn=$('ptt');
+pttBtn.addEventListener('mousedown',pttDown);
+pttBtn.addEventListener('mouseup',pttUp);
+pttBtn.addEventListener('mouseleave',function(e){if(isTxing)pttUp(e)});
+pttBtn.addEventListener('touchstart',pttDown,{passive:false});
+pttBtn.addEventListener('touchend',pttUp,{passive:false});
+pttBtn.addEventListener('touchcancel',pttUp,{passive:false});
+window.addEventListener('keydown',function(e){if(e.code==='Space'&&!e.repeat&&!spaceDown){spaceDown=true;if(document.activeElement&&document.activeElement.tagName==='INPUT')return;pttDown(e)}});
+window.addEventListener('keyup',function(e){if(e.code==='Space'){spaceDown=false;pttUp(e)}});
+
+/* ============================================================
+   SOS
+   ============================================================ */
+function toggleSOS(){
+  getAC();
+  if(!sosActive){sosClicks++;if(sosClicks<2){addLog('⚠️ Double-cliquez SOS pour confirmer');beep(800,100,'square',0.15);setTimeout(function(){sosClicks=0},3000);return}
+    sosClicks=0;sosActive=true;$('btn-sos').textContent='✅ ANNULER';$('btn-sos').classList.add('active');
+    $('emergency-banner').classList.add('show');startSiren();
+    currentChannel=9;updateChannelDisplay();joinChannel(9);
+    if(socket)socket.emit('emergency:activate');addLog('🚨 URGENCE ACTIVÉE');
+  }else{sosActive=false;$('btn-sos').textContent='🚨 SOS';$('btn-sos').classList.remove('active');
+    $('emergency-banner').classList.remove('show');stopSiren();
+    if(socket)socket.emit('emergency:cancel');addLog('✅ Urgence annulée')}
 }
 
-// --- PTT ---
-function setTx(on){
-  localStream.getAudioTracks()[0].enabled = on;
-  $('ptt').classList.toggle('tx', on);
-  $('status').textContent = on ? 'TX ● EMISSION' : 'STANDBY';
-  $('status').style.color = on ? '#f55' : '#3f6';
+/* ============================================================
+   TEXTE
+   ============================================================ */
+function sendText(){var inp=$('text-input'),msg=inp.value.trim();if(!msg||!socket)return;socket.emit('text:send',{message:msg});inp.value=''}
+$('text-input').addEventListener('keydown',function(e){if(e.key==='Enter')sendText()});
+function addTextMessage(cs,msg,ts){var el=$('text-messages'),t=ts?new Date(ts).toLocaleTimeString('fr-FR'):now();
+el.innerHTML+='<div class="msg"><span class="ts">['+t+']</span> <span class="cs">'+cs+'</span>: '+msg+'</div>';el.scrollTop=el.scrollHeight}
+
+/* ============================================================
+   TEST MICRO
+   ============================================================ */
+function testMic(){
+  if(!localStream){addLog('❌ Micro non disponible');return}
+  addLog('🎤 Test : enregistrement 3s...');
+  var t=localStream.getAudioTracks();for(var i=0;i<t.length;i++)t[i].enabled=true;
+  var ac=getAC(),dest=ac.createMediaStreamDestination(),src=ac.createMediaStreamSource(localStream);
+  src.connect(dest);var rec=new MediaRecorder(dest.stream),chunks=[];
+  rec.ondataavailable=function(e){chunks.push(e.data)};
+  rec.onstop=function(){var blob=new Blob(chunks,{type:'audio/webm'}),url=URL.createObjectURL(blob);
+  var audio=new Audio(url);audio.volume=settings.volume/100;audio.play();addLog('🔊 Lecture...');
+  for(var i=0;i<t.length;i++)t[i].enabled=false};
+  rec.start();setTimeout(function(){rec.stop();addLog('🎤 Test terminé')},3000);
 }
-const pttDown = e => { e.preventDefault(); if(!socket) return;
-  beep(1200,70); socket.emit('ptt:start'); };
-const pttUp   = e => { e.preventDefault(); if(!socket) return;
-  socket.emit('ptt:stop'); setTx(false); rogerBeep(); };
 
-$('ptt').addEventListener('mousedown', pttDown);
-$('ptt').addEventListener('mouseup', pttUp);
-$('ptt').addEventListener('mouseleave', pttUp);
-$('ptt').addEventListener('touchstart', pttDown, {passive:false});
-$('ptt').addEventListener('touchend', pttUp, {passive:false});
-
-let spaceDown=false;
-addEventListener('keydown', e => { if(e.code==='Space' && !spaceDown){ spaceDown=true; pttDown(e);} });
-addEventListener('keyup',   e => { if(e.code==='Space'){ spaceDown=false; pttUp(e);} });
-
-function siren(){
-  let i=0; const t=setInterval(()=>{ beep(i%2?600:1000,220,'sawtooth'); if(++i>10) clearInterval(t); },250);
+/* ============================================================
+   DÉCONNEXION
+   ============================================================ */
+function disconnect(){
+  if(socket){socket.disconnect();socket=null}
+  if(localStream){var t=localStream.getTracks();for(var i=0;i<t.length;i++)t[i].stop();localStream=null}
+  var pids=Object.keys(peers);for(var i=0;i<pids.length;i++)closePeer(pids[i]);
+  stopStatic();stopSiren();stopVOX();
+  $('app').classList.remove('visible');$('boot-screen').classList.remove('hidden');
+  $('ptt').disabled=true;beepDisconnect();
 }
+
+/* ============================================================
+   CONNEXION
+   ============================================================ */
+async function startApp(){
+  var callsign=$('boot-callsign').value.trim();
+  if(!callsign){$('boot-mic-info').textContent='⚠️ Entrez votre indicatif';$('boot-mic-info').style.color='#ffaa00';return}
+  myCallsign=callsign.toUpperCase();
+  $('boot-connect').disabled=true;$('boot-connect').textContent='CONNEXION...';
+  $('boot-mic-info').textContent='🎤 Demande accès micro...';$('boot-mic-info').style.color='#ffaa00';
+
+  localStream=null;
+  try{localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false})}
+  catch(e1){try{localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false})}
+  catch(e2){$('boot-mic-info').innerHTML='❌ Micro refusé: '+e2.message+'<br>Cliquez 🔒 → Microphone → Autoriser';
+  $('boot-mic-info').style.color='#ff4444';$('boot-connect').disabled=false;$('boot-connect').textContent='⚡ CONNECTER';return}}
+
+  var tracks=localStream.getAudioTracks();for(var i=0;i<tracks.length;i++)tracks[i].enabled=false;
+  $('boot-mic-info').textContent='✅ Micro: '+(tracks[0]&&tracks[0].label?tracks[0].label:'Détecté');
+  $('boot-mic-info').style.color='#33ff66';
+  try{localStorage.setItem('radio_callsign',myCallsign)}catch(e){}
+
+  $('boot-status').textContent='Connexion serveur...';
+  socket=io({transports:['websocket','polling'],reconnection:true,reconnectionDelay:2000});
+
+  socket.on('connect',function(){
+    myId=socket.id;$('conn-dot').classList.remove('off');$('my-callsign').textContent=myCallsign;
+    setLCDStatus('STANDBY','#33ff66');$('ptt').disabled=false;
+    socket.emit('user:join',{callsign:myCallsign});
+    setTimeout(function(){socket.emit('channel:join',{channelId:currentChannel});updateChannelDisplay()},200);
+    $('boot-screen').classList.add('hidden');$('app').classList.add('visible');
+    beepConnect();addLog('✅ Connecté — '+myCallsign);startVU(localStream);
+    if(settings.vox)startVOX();if(settings.staticNoise)startStatic();
+  });
+
+  socket.on('disconnect',function(){
+    $('conn-dot').classList.add('off');setLCDStatus('HORS LIGNE','#888');$('ptt').disabled=true;
+    addLog('⚠️ Déconnecté');var pids=Object.keys(peers);for(var i=0;i<pids.length;i++)closePeer(pids[i]);
+  });
+  socket.on('connect_error',function(e){addLog('❌ Erreur: '+e.message)});
+
+  socket.on('channel:joined',function(d){
+    addLog('📻 Canal '+d.channelId+' — '+d.peers.length+' pair(s)');
+    var pids=Object.keys(peers);for(var i=0;i<pids.length;i++)closePeer(pids[i]);
+    for(var j=0;j<d.peers.length;j++)createPeer(d.peers[j].id,true);
+  });
+  socket.on('peer:joined',function(d){addLog('➕ '+d.callsign);createPeer(d.id,false);beep(600,60,'sine',0.06)});
+  socket.on('peer:left',function(d){addLog('➖ Pair déconnecté');closePeer(d.id);beep(400,60,'sine',0.06)});
+
+  socket.on('channel:users',function(s){
+    var c=s.users?s.users.length:0;$('lcd-members').textContent=c+' en ligne';
+    var h='';if(s.users)for(var i=0;i<s.users.length;i++){var u=s.users[i];
+    var dc=u.isTalking?'member-dot talking':'member-dot online';
+    h+='<div class="member"><span><span class="'+dc+'"></span>'+u.callsign+'</span>';
+    if(u.isTalking)h+='<span style="color:#ff4444;font-size:11px">TX</span>';h+='</div>'}
+    $('members-list').innerHTML=h||'Aucun membre';
+  });
+  socket.on('channels:status',function(d){channelsStatus=d});
+
+  socket.on('ptt:granted',function(){setTX(true);addLog('🎙️ TX — émission')});
+  socket.on('ptt:denied',function(d){beepError();isTxing=false;$('ptt').classList.remove('tx');
+    setLCDStatus('⛔ OCCUPÉ — '+d.by,'#ffaa00');addLog('⛔ Occupé par '+d.by);
+    setTimeout(function(){if(!isTxing)setLCDStatus('STANDBY','#33ff66')},2500)});
+  socket.on('ptt:timeout',function(){beepError();setTX(false);addLog('⏱️ Timeout 60s')});
+
+  socket.on('ptt:active',function(d){if(d.userId===myId)return;
+    setLCDStatus('RX ◀ '+d.callsign,'#33ff66');$('lcd-who-talks').textContent='🔊 '+d.callsign+' parle';
+    $('lcd-who-talks').style.color='#33ff66';beepRX();if(settings.staticNoise)stopStatic();
+    addLog('📡 RX ← '+d.callsign)});
+
+  socket.on('ptt:released',function(d){if(d.userId===myId)return;
+    setLCDStatus('STANDBY','#33ff66');$('lcd-who-talks').textContent='';
+    rogerBeep();if(settings.staticNoise)startStatic();addLog('📡 Fin RX ← '+d.callsign)});
+
+  socket.on('webrtc:offer',function(d){
+    var pc=peers[d.fromId]||createPeer(d.fromId,false);if(!pc)return;
+    pc.setRemoteDescription(new RTCSessionDescription(d.offer))
+    .then(function(){return pc.createAnswer()}).then(function(a){return pc.setLocalDescription(a)})
+    .then(function(){socket.emit('webrtc:answer',{targetId:d.fromId,answer:pc.localDescription})})
+    .catch(function(e){addLog('❌ '+e.message)})});
+  socket.on('webrtc:answer',function(d){var pc=peers[d.fromId];if(pc)pc.setRemoteDescription(new RTCSessionDescription(d.answer)).catch(function(e){addLog('❌ '+e.message)})});
+  socket.on('webrtc:ice',function(d){var pc=peers[d.fromId];if(pc)pc.addIceCandidate(new RTCIceCandidate(d.candidate)).catch(function(){})});
+
+  socket.on('emergency:alert',function(d){
+    $('emergency-banner').classList.add('show');startSiren();addLog('🚨 URGENCE — '+d.callsign);
+    if(!sosActive){sosActive=true;$('btn-sos').textContent='✅ ANNULER';$('btn-sos').classList.add('active');
+    currentChannel=9;updateChannelDisplay();joinChannel(9)}});
+  socket.on('emergency:cancelled',function(d){
+    $('emergency-banner').classList.remove('show');stopSiren();sosActive=false;
+    $('btn-sos').textContent='🚨 SOS';$('btn-sos').classList.remove('active');addLog('✅ Urgence annulée — '+d.callsign)});
+
+  socket.on('text:received',function(d){addTextMessage(d.callsign,d.message,d.timestamp);beep(880,60,'sine',0.08);addLog('💬 '+d.callsign+': '+d.message)});
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+loadSettings();updateChannelDisplay();
+(async function(){try{var d=await navigator.mediaDevices.enumerateDevices();
+var m=d.filter(function(x){return x.kind==='audioinput'});
+if(m.length>0){$('boot-mic-info').textContent='🎤 '+m.length+' micro(s) détecté(s)';$('boot-mic-info').style.color='#33ff66'}
+else{$('boot-mic-info').textContent='⚠️ Aucun micro détecté';$('boot-mic-info').style.color='#ffaa00'}}
+catch(e){$('boot-mic-info').textContent='Micro demandé à la connexion';$('boot-mic-info').style.color='#1a5c2a'}})();
 </script>
 </body>
 </html>
