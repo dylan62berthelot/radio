@@ -1,112 +1,157 @@
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const cors = require('cors');
-const { Server } = require('socket.io');
+var express = require('express');
+var http = require('http');
+var path = require('path');
+var cors = require('cors');
+var socketio = require('socket.io');
 
-const app = express();
+var app = express();
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const server = http.createServer(app);
-const io = new Server(server, {
+var server = http.createServer(app);
+var io = new socketio.Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
-  pingTimeout: 20000,
+  pingTimeout: 25000,
   pingInterval: 10000
 });
 
-// ---------- ÉTAT ----------
-const users = {};     // socketId -> { callsign, channel, isTalking }
-const channels = {};  // channelId -> { users: [socketId], talkingUser }
+// ========== ÉTAT GLOBAL ==========
+var users = {};
+var channels = {};
+var MAX_PTT = 60000;
+var emergencyActive = false;
+var emergencyBy = null;
 
-const MAX_PTT_MS = 60000;
-
-function channelState(channelId) {
-  const ch = channels[channelId];
-  if (!ch) return { users: [], talkingUser: null };
+// ========== FONCTIONS ==========
+function getChannelState(chId) {
+  var ch = channels[chId];
+  if (!ch) return { channelId: chId, users: [], talkingUser: null, talkingCallsign: null };
+  var list = [];
+  for (var i = 0; i < ch.users.length; i++) {
+    var uid = ch.users[i];
+    if (users[uid]) {
+      list.push({
+        id: uid,
+        callsign: users[uid].callsign,
+        isTalking: users[uid].isTalking
+      });
+    }
+  }
   return {
-    channelId,
+    channelId: chId,
+    users: list,
     talkingUser: ch.talkingUser,
-    talkingCallsign: ch.talkingUser ? users[ch.talkingUser]?.callsign : null,
-    users: ch.users
-      .filter(id => users[id])
-      .map(id => ({
-        id,
-        callsign: users[id].callsign,
-        isTalking: users[id].isTalking
-      }))
+    talkingCallsign: ch.talkingUser && users[ch.talkingUser] ? users[ch.talkingUser].callsign : null
   };
 }
 
-function broadcastChannel(channelId) {
-  io.to(`ch:${channelId}`).emit('channel:users', channelState(channelId));
+function broadcastChannel(chId) {
+  io.to('ch:' + chId).emit('channel:users', getChannelState(chId));
 }
 
-function leaveCurrentChannel(socket) {
-  const user = users[socket.id];
-  if (!user || user.channel == null) return;
-  const chId = user.channel;
-  const ch = channels[chId];
+function leaveChannel(socket) {
+  var user = users[socket.id];
+  if (!user || user.channel === null) return;
+  var chId = user.channel;
+  var ch = channels[chId];
   if (ch) {
-    ch.users = ch.users.filter(id => id !== socket.id);
+    var idx = ch.users.indexOf(socket.id);
+    if (idx > -1) ch.users.splice(idx, 1);
     if (ch.talkingUser === socket.id) ch.talkingUser = null;
-    io.to(`ch:${chId}`).emit('peer:left', { id: socket.id });
+    socket.to('ch:' + chId).emit('peer:left', { id: socket.id });
   }
-  socket.leave(`ch:${chId}`);
+  socket.leave('ch:' + chId);
   user.channel = null;
   broadcastChannel(chId);
 }
 
-// ---------- SOCKETS ----------
-io.on('connection', (socket) => {
-  console.log('[+] Connexion', socket.id);
+function getAllChannelsStatus() {
+  var result = [];
+  for (var i = 1; i <= 16; i++) {
+    var ch = channels[i];
+    result.push({
+      id: i,
+      userCount: ch ? ch.users.length : 0,
+      talkingUser: ch ? ch.talkingUser : null,
+      talkingCallsign: ch && ch.talkingUser && users[ch.talkingUser] ? users[ch.talkingUser].callsign : null
+    });
+  }
+  return result;
+}
 
-  socket.on('user:join', ({ callsign }) => {
-    const name = (callsign || 'UNIT').toString().slice(0, 16).toUpperCase();
-    users[socket.id] = { callsign: name, channel: null, isTalking: false };
-    socket.emit('user:joined', { id: socket.id, callsign: name });
-    console.log(`[i] ${name} identifié (${socket.id})`);
+// ========== CONNEXIONS SOCKET ==========
+io.on('connection', function(socket) {
+  console.log('[+] Connexion: ' + socket.id);
+
+  // Identification
+  socket.on('user:join', function(data) {
+    var callsign = String(data.callsign || 'UNIT').slice(0, 16).toUpperCase();
+    users[socket.id] = {
+      callsign: callsign,
+      channel: null,
+      isTalking: false,
+      pttTimeout: null
+    };
+    socket.emit('user:joined', { id: socket.id, callsign: callsign });
+    console.log('[i] ' + callsign + ' identifie (' + socket.id + ')');
+
+    // Envoyer l'état d'urgence si actif
+    if (emergencyActive) {
+      socket.emit('emergency:alert', {
+        userId: null,
+        callsign: emergencyBy || '???',
+        timestamp: new Date().toISOString()
+      });
+    }
   });
 
-  socket.on('channel:join', ({ channelId }) => {
-    const user = users[socket.id];
-    if (!user) return socket.emit('error:msg', { msg: 'Non identifié' });
+  // Rejoindre un canal
+  socket.on('channel:join', function(data) {
+    var user = users[socket.id];
+    if (!user) return socket.emit('error:msg', { msg: 'Non identifie' });
 
-    leaveCurrentChannel(socket);
+    leaveChannel(socket);
 
-    const id = Number(channelId);
+    var id = parseInt(data.channelId, 10);
+    if (isNaN(id) || id < 1 || id > 16) id = 1;
+
     if (!channels[id]) channels[id] = { users: [], talkingUser: null };
-
     channels[id].users.push(socket.id);
     user.channel = id;
-    socket.join(`ch:${id}`);
+    socket.join('ch:' + id);
 
-    // Liste des pairs déjà présents -> pour créer les connexions WebRTC
-    const peers = channels[id].users
-      .filter(pid => pid !== socket.id && users[pid])
-      .map(pid => ({ id: pid, callsign: users[pid].callsign }));
+    var peerList = [];
+    for (var i = 0; i < channels[id].users.length; i++) {
+      var pid = channels[id].users[i];
+      if (pid !== socket.id && users[pid]) {
+        peerList.push({ id: pid, callsign: users[pid].callsign });
+      }
+    }
 
-    socket.emit('channel:joined', { channelId: id, peers });
-    socket.to(`ch:${id}`).emit('peer:joined', {
-      id: socket.id,
-      callsign: user.callsign
-    });
-
+    socket.emit('channel:joined', { channelId: id, peers: peerList });
+    socket.to('ch:' + id).emit('peer:joined', { id: socket.id, callsign: user.callsign });
     broadcastChannel(id);
-    console.log(`[i] ${user.callsign} -> canal ${id}`);
+    io.emit('channels:status', getAllChannelsStatus());
+    console.log('[i] ' + user.callsign + ' -> canal ' + id);
   });
 
-  // ---------- PTT ----------
-  socket.on('ptt:start', () => {
-    const user = users[socket.id];
-    if (!user || user.channel == null) return;
-    const ch = channels[user.channel];
+  // Scan canaux
+  socket.on('channels:scan', function() {
+    socket.emit('channels:status', getAllChannelsStatus());
+  });
+
+  // ===== PTT =====
+  socket.on('ptt:start', function() {
+    var user = users[socket.id];
+    if (!user || user.channel === null) return;
+    var ch = channels[user.channel];
     if (!ch) return;
 
     if (ch.talkingUser && ch.talkingUser !== socket.id) {
+      var blocker = users[ch.talkingUser];
       return socket.emit('ptt:denied', {
         reason: 'CANAL OCCUPE',
-        by: users[ch.talkingUser]?.callsign || '???'
+        by: blocker ? blocker.callsign : '???'
       });
     }
 
@@ -114,54 +159,59 @@ io.on('connection', (socket) => {
     user.isTalking = true;
 
     socket.emit('ptt:granted');
-    io.to(`ch:${user.channel}`).emit('ptt:active', {
+    io.to('ch:' + user.channel).emit('ptt:active', {
       userId: socket.id,
       callsign: user.callsign
     });
+    broadcastChannel(user.channel);
 
-    clearTimeout(user.pttTimeout);
-    user.pttTimeout = setTimeout(() => {
+    if (user.pttTimeout) clearTimeout(user.pttTimeout);
+    user.pttTimeout = setTimeout(function() {
       if (ch.talkingUser === socket.id) {
         ch.talkingUser = null;
         user.isTalking = false;
         socket.emit('ptt:timeout');
-        io.to(`ch:${user.channel}`).emit('ptt:released', {
-          userId: socket.id, callsign: user.callsign
+        io.to('ch:' + user.channel).emit('ptt:released', {
+          userId: socket.id,
+          callsign: user.callsign
         });
         broadcastChannel(user.channel);
       }
-    }, MAX_PTT_MS);
+    }, MAX_PTT);
   });
 
-  socket.on('ptt:stop', () => {
-    const user = users[socket.id];
-    if (!user || user.channel == null) return;
-    const ch = channels[user.channel];
-    clearTimeout(user.pttTimeout);
+  socket.on('ptt:stop', function() {
+    var user = users[socket.id];
+    if (!user || user.channel === null) return;
+    var ch = channels[user.channel];
+    if (user.pttTimeout) clearTimeout(user.pttTimeout);
     if (ch && ch.talkingUser === socket.id) ch.talkingUser = null;
     user.isTalking = false;
-    io.to(`ch:${user.channel}`).emit('ptt:released', {
-      userId: socket.id, callsign: user.callsign
+    io.to('ch:' + user.channel).emit('ptt:released', {
+      userId: socket.id,
+      callsign: user.callsign
     });
     broadcastChannel(user.channel);
   });
 
-  // ---------- SIGNALISATION WEBRTC ----------
-  socket.on('webrtc:offer', ({ targetId, offer }) => {
-    io.to(targetId).emit('webrtc:offer', { fromId: socket.id, offer });
+  // ===== WEBRTC =====
+  socket.on('webrtc:offer', function(data) {
+    io.to(data.targetId).emit('webrtc:offer', { fromId: socket.id, offer: data.offer });
   });
-  socket.on('webrtc:answer', ({ targetId, answer }) => {
-    io.to(targetId).emit('webrtc:answer', { fromId: socket.id, answer });
+  socket.on('webrtc:answer', function(data) {
+    io.to(data.targetId).emit('webrtc:answer', { fromId: socket.id, answer: data.answer });
   });
-  socket.on('webrtc:ice', ({ targetId, candidate }) => {
-    io.to(targetId).emit('webrtc:ice', { fromId: socket.id, candidate });
+  socket.on('webrtc:ice', function(data) {
+    io.to(data.targetId).emit('webrtc:ice', { fromId: socket.id, candidate: data.candidate });
   });
 
-  // ---------- URGENCE ----------
-  socket.on('emergency:activate', () => {
-    const user = users[socket.id];
+  // ===== URGENCE =====
+  socket.on('emergency:activate', function() {
+    var user = users[socket.id];
     if (!user) return;
-    console.log(`[!!!] URGENCE par ${user.callsign}`);
+    emergencyActive = true;
+    emergencyBy = user.callsign;
+    console.log('[!!!] URGENCE par ' + user.callsign);
     io.emit('emergency:alert', {
       userId: socket.id,
       callsign: user.callsign,
@@ -169,32 +219,60 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('emergency:cancel', () => {
-    const user = users[socket.id];
-    io.emit('emergency:cancelled', { callsign: user?.callsign || '???' });
+  socket.on('emergency:cancel', function() {
+    var user = users[socket.id];
+    emergencyActive = false;
+    emergencyBy = null;
+    io.emit('emergency:cancelled', {
+      callsign: user ? user.callsign : '???'
+    });
   });
 
-  // ---------- DÉCONNEXION ----------
-  socket.on('disconnect', () => {
-    const user = users[socket.id];
+  // ===== MESSAGE TEXTE =====
+  socket.on('text:send', function(data) {
+    var user = users[socket.id];
+    if (!user || user.channel === null) return;
+    io.to('ch:' + user.channel).emit('text:received', {
+      callsign: user.callsign,
+      message: String(data.message).slice(0, 200),
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  // ===== DÉCONNEXION =====
+  socket.on('disconnect', function() {
+    var user = users[socket.id];
     if (user) {
-      clearTimeout(user.pttTimeout);
-      leaveCurrentChannel(socket);
-      console.log(`[-] ${user.callsign} déconnecté`);
+      if (user.pttTimeout) clearTimeout(user.pttTimeout);
+      leaveChannel(socket);
+      console.log('[-] ' + user.callsign + ' deconnecte');
     }
     delete users[socket.id];
+    io.emit('channels:status', getAllChannelsStatus());
   });
 });
 
-// ---------- ROUTES ----------
-app.get('/health', (req, res) => {
+// ========== ROUTES ==========
+app.get('/health', function(req, res) {
   res.json({
     status: 'OK',
     uptime: Math.round(process.uptime()),
     users: Object.keys(users).length,
-    channels: Object.keys(channels).length
+    channels: Object.keys(channels).length,
+    emergency: emergencyActive
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🎙️  Serveur radio actif sur ${PORT}`));
+app.get('/', function(req, res) {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// ========== DÉMARRAGE ==========
+var PORT = process.env.PORT || 3000;
+server.listen(PORT, function() {
+  console.log('=================================');
+  console.log('  RADIO PTT SERVER v2.0');
+  console.log('  Port: ' + PORT);
+  console.log('  Status: OPERATIONAL');
+  console.log('=================================');
+});
