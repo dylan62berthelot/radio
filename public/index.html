@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Radio PTT - Test</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b0f0c;color:#3f6;font-family:monospace;
+     display:flex;flex-direction:column;align-items:center;padding:20px;gap:12px}
+h1{font-size:18px;letter-spacing:2px}
+input,select,button{font-family:monospace;font-size:16px;padding:10px;
+     background:#111;color:#3f6;border:1px solid #2a4;border-radius:6px}
+#lcd{width:100%;max-width:420px;background:#0a1a0f;border:2px solid #2a4;
+     border-radius:8px;padding:14px;line-height:1.7}
+#status{font-size:22px;font-weight:bold}
+#ptt{width:100%;max-width:420px;height:150px;font-size:28px;font-weight:bold;
+     background:#3a0d0d;color:#f66;border:3px solid #a33;border-radius:14px;
+     user-select:none;touch-action:none}
+#ptt.tx{background:#c00;color:#fff;border-color:#f88;box-shadow:0 0 30px #f00}
+.row{display:flex;gap:8px;width:100%;max-width:420px}
+.row>*{flex:1}
+#log{width:100%;max-width:420px;height:130px;overflow:auto;background:#060906;
+     border:1px solid #1a3;padding:8px;font-size:12px;border-radius:6px}
+</style>
+</head>
+<body>
+<h1>◉ RADIO PTT — TEST</h1>
+
+<div class="row">
+  <input id="callsign" placeholder="INDICATIF" value="UNIT-1">
+  <select id="channel">
+    <option value="1">CH 1</option><option value="2">CH 2</option>
+    <option value="3">CH 3</option><option value="9">CH 9 URG</option>
+  </select>
+</div>
+<button id="connect">CONNECTER</button>
+
+<div id="lcd">
+  <div>CANAL : <b id="chLabel">--</b></div>
+  <div>STATUT : <span id="status">HORS LIGNE</span></div>
+  <div>EN LIGNE : <span id="who">-</span></div>
+  <div>MEMBRES : <span id="members">0</span></div>
+</div>
+
+<button id="ptt">PTT</button>
+<div id="log"></div>
+<div id="audios"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const ICE = { iceServers:[
+  {urls:'stun:stun.l.google.com:19302'},
+  {urls:'stun:global.stun.twilio.com:3478'}
+]};
+
+let socket, localStream, myId;
+const peers = {};
+const $ = id => document.getElementById(id);
+const log = m => { const d=$('log'); d.innerHTML += m+'<br>'; d.scrollTop=d.scrollHeight; };
+
+// --- Sons ---
+let AC;
+function beep(freq, dur=80, type='square'){
+  AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+  const o=AC.createOscillator(), g=AC.createGain();
+  o.type=type; o.frequency.value=freq;
+  g.gain.setValueAtTime(0.15, AC.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime+dur/1000);
+  o.connect(g); g.connect(AC.destination);
+  o.start(); o.stop(AC.currentTime+dur/1000);
+}
+const rogerBeep = () => { beep(800,60); setTimeout(()=>beep(1200,90),70); };
+
+// --- Connexion ---
+$('connect').onclick = async () => {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true }
+    });
+    localStream.getAudioTracks()[0].enabled = false; // muet par défaut
+  } catch(e){ return log('❌ MICRO REFUSÉ : '+e.message); }
+
+  socket = io();
+
+  socket.on('connect', () => {
+    myId = socket.id;
+    log('✅ Connecté au serveur');
+    socket.emit('user:join', { callsign: $('callsign').value });
+    socket.emit('channel:join', { channelId: $('channel').value });
+    $('status').textContent = 'STANDBY';
+    $('chLabel').textContent = 'CH ' + $('channel').value;
+    beep(400,60); setTimeout(()=>beep(800,80),70);
+  });
+
+  socket.on('disconnect', () => { $('status').textContent='HORS LIGNE'; log('⚠️ Déconnecté'); });
+
+  socket.on('channel:joined', ({channelId, peers:list}) => {
+    log('📻 Canal '+channelId+' ('+list.length+' pair(s))');
+    list.forEach(p => createPeer(p.id, true));
+  });
+
+  socket.on('peer:joined', ({id, callsign}) => { log('➕ '+callsign); createPeer(id,false); });
+  socket.on('peer:left',   ({id}) => { closePeer(id); log('➖ pair parti'); });
+
+  socket.on('channel:users', s => {
+    $('members').textContent = s.users.length;
+    $('who').textContent = s.users.map(u=>u.callsign).join(', ') || '-';
+  });
+
+  socket.on('ptt:granted',  () => { setTx(true); });
+  socket.on('ptt:denied',   d  => { beep(200,300,'sawtooth'); log('⛔ '+d.reason+' ('+d.by+')'); });
+  socket.on('ptt:timeout',  () => { setTx(false); log('⏱️ TIMEOUT'); });
+
+  socket.on('ptt:active', ({userId, callsign}) => {
+    if(userId===myId) return;
+    $('status').textContent='RX ◀ '+callsign;
+    $('status').style.color='#3f6'; beep(1000,50);
+  });
+  socket.on('ptt:released', ({userId}) => {
+    if(userId===myId) return;
+    $('status').textContent='STANDBY'; rogerBeep();
+  });
+
+  // --- WebRTC ---
+  socket.on('webrtc:offer', async ({fromId, offer}) => {
+    const pc = peers[fromId] || createPeer(fromId,false);
+    await pc.setRemoteDescription(offer);
+    const ans = await pc.createAnswer();
+    await pc.setLocalDescription(ans);
+    socket.emit('webrtc:answer',{targetId:fromId, answer:ans});
+  });
+  socket.on('webrtc:answer', async ({fromId, answer}) => {
+    await peers[fromId]?.setRemoteDescription(answer);
+  });
+  socket.on('webrtc:ice', async ({fromId, candidate}) => {
+    try { await peers[fromId]?.addIceCandidate(candidate); } catch(e){}
+  });
+
+  socket.on('emergency:alert', d => { log('🚨 URGENCE : '+d.callsign); siren(); });
+};
+
+function createPeer(id, initiator){
+  if(peers[id]) return peers[id];
+  const pc = new RTCPeerConnection(ICE);
+  peers[id] = pc;
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+  pc.ontrack = e => {
+    let a = document.getElementById('a_'+id);
+    if(!a){ a=document.createElement('audio'); a.id='a_'+id; a.autoplay=true;
+            $('audios').appendChild(a); }
+    a.srcObject = e.streams[0];
+  };
+  pc.onicecandidate = e => {
+    if(e.candidate) socket.emit('webrtc:ice',{targetId:id, candidate:e.candidate});
+  };
+  if(initiator){
+    pc.onnegotiationneeded = async () => {
+      const off = await pc.createOffer();
+      await pc.setLocalDescription(off);
+      socket.emit('webrtc:offer',{targetId:id, offer:off});
+    };
+  }
+  return pc;
+}
+function closePeer(id){
+  peers[id]?.close(); delete peers[id];
+  document.getElementById('a_'+id)?.remove();
+}
+
+// --- PTT ---
+function setTx(on){
+  localStream.getAudioTracks()[0].enabled = on;
+  $('ptt').classList.toggle('tx', on);
+  $('status').textContent = on ? 'TX ● EMISSION' : 'STANDBY';
+  $('status').style.color = on ? '#f55' : '#3f6';
+}
+const pttDown = e => { e.preventDefault(); if(!socket) return;
+  beep(1200,70); socket.emit('ptt:start'); };
+const pttUp   = e => { e.preventDefault(); if(!socket) return;
+  socket.emit('ptt:stop'); setTx(false); rogerBeep(); };
+
+$('ptt').addEventListener('mousedown', pttDown);
+$('ptt').addEventListener('mouseup', pttUp);
+$('ptt').addEventListener('mouseleave', pttUp);
+$('ptt').addEventListener('touchstart', pttDown, {passive:false});
+$('ptt').addEventListener('touchend', pttUp, {passive:false});
+
+let spaceDown=false;
+addEventListener('keydown', e => { if(e.code==='Space' && !spaceDown){ spaceDown=true; pttDown(e);} });
+addEventListener('keyup',   e => { if(e.code==='Space'){ spaceDown=false; pttUp(e);} });
+
+function siren(){
+  let i=0; const t=setInterval(()=>{ beep(i%2?600:1000,220,'sawtooth'); if(++i>10) clearInterval(t); },250);
+}
+</script>
+</body>
+</html>
