@@ -311,6 +311,19 @@ io.on('connection', function(socket) {
     });
   });
 
+  // ===== SOUNDBOARD CUSTOM =====
+  socket.on('soundboard:custom', function(data) {
+    var user = users[socket.id];
+    if (!user || user.channel === null) return;
+    // Limiter la taille (500 KB max en base64)
+    if (!data.audio || data.audio.length > 700000) return;
+    socket.to('ch:' + user.channel).emit('soundboard:custom', {
+      name: String(data.name || 'Son').slice(0, 20),
+      audio: data.audio,
+      callsign: user.callsign
+    });
+  });
+
   // ===== REPLAY =====
   socket.on('replay:store', function(data) {
     var user = users[socket.id];
